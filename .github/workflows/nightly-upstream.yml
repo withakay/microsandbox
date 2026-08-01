@@ -45,12 +45,19 @@ jobs:
       - name: Merge upstream release into main
         env:
           TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
           git fetch --force upstream "refs/tags/$TAG:refs/tags/upstream-$TAG"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git merge --no-edit --no-ff "refs/tags/upstream-$TAG"
+          git merge --no-commit --no-ff "refs/tags/upstream-$TAG"
+          sed -i "s#<Version>[^<]*</Version>#<Version>$VERSION</Version>#" \
+            sdk/dotnet/src/Microsandbox/Microsandbox.csproj
+          git add sdk/dotnet/src/Microsandbox/Microsandbox.csproj
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: sync upstream $TAG"
+          fi
 
       - name: Check NuGet version
         id: nuget

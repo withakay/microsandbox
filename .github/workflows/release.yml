@@ -642,6 +642,77 @@ jobs:
             release-artifacts/*
 
   # ---------------------------------------------------------------------------
+  # Publish .NET SDK to NuGet.org with GitHub OIDC
+  # ---------------------------------------------------------------------------
+  nuget-publish:
+    name: Publish .NET SDK
+    needs: assemble
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: nuget
+      url: https://www.nuget.org/packages/Withakay.Microsandbox
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download native release artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: release-artifacts
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Stage native assets
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          (cd release-artifacts && sha256sum -- ./* | sed 's#  \./#  #' > checksums.sha256)
+          sdk/dotnet/scripts/stage-native.sh release-artifacts "$VERSION"
+
+      - name: Pack .NET SDK
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PROJECT_VERSION=$(sed -n 's#.*<Version>\([^<]*\)</Version>.*#\1#p' sdk/dotnet/src/Microsandbox/Microsandbox.csproj)
+          if [ "$PROJECT_VERSION" != "$VERSION" ]; then
+            echo "::error::tag version $VERSION does not match .NET project version $PROJECT_VERSION"
+            exit 1
+          fi
+          dotnet restore sdk/dotnet/Microsandbox.slnx
+          dotnet build sdk/dotnet/Microsandbox.slnx --no-restore -p:Version="$VERSION"
+          MICROSANDBOX_FFI_LIBRARY="$PWD/release-artifacts/libmicrosandbox_go_ffi-linux-amd64.so" \
+            dotnet test sdk/dotnet/Microsandbox.slnx --no-build --no-restore -p:Version="$VERSION"
+          dotnet pack sdk/dotnet/src/Microsandbox/Microsandbox.csproj \
+            --no-restore \
+            --configuration Release \
+            --output sdk/dotnet/artifacts \
+            -p:Version="$VERSION" \
+            -p:PackageVersion="$VERSION"
+
+      - name: Upload NuGet package artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dotnet-sdk-nuget-${{ github.run_attempt }}
+          path: sdk/dotnet/artifacts/*.nupkg
+
+      - name: Log in to NuGet.org with OIDC
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish .NET SDK
+        run: >-
+          dotnet nuget push sdk/dotnet/artifacts/*.nupkg
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
+
+  # ---------------------------------------------------------------------------
   # Sync mintlify branch to the released commit
   #
   # mintlify is the docs deploy branch. it tracks the released commit but may

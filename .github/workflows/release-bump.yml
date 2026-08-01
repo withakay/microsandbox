@@ -97,6 +97,7 @@ jobs:
             - `packages/microsandbox-types/typescript/package.json`
             - `sdk/node-ts/package.json` and per-platform sub-packages
             - `sdk/go/setup.go` `sdkVersion` (if present)
+            - `sdk/dotnet` package version and versioned README commands
 
             regenerated:
             - `Cargo.lock`

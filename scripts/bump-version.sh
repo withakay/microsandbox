@@ -29,6 +29,7 @@
 #     TypeScript example)
 #   - sdk/go/setup.go (sdkVersion constant; consumed by EnsureInstalled to
 #     resolve the GitHub release artefact URL for libmicrosandbox_go_ffi)
+#   - sdk/dotnet package metadata and versioned README commands
 #
 # Cargo.lock entries for workspace-versioned crates are bumped by sed,
 # but the script does not do a full cargo-driven regen — run `cargo
@@ -160,6 +161,19 @@ GO_SETUP="sdk/go/setup.go"
 if [ -f "$GO_SETUP" ] && grep -q "sdkVersion = \"${OLD}\"" "$GO_SETUP"; then
   inplace "s/sdkVersion = \"${OLD}\"/sdkVersion = \"${NEW}\"/" "$GO_SETUP"
   echo "  updated ${GO_SETUP}"
+fi
+
+# --- .NET: package version and versioned documentation -------------------
+DOTNET_PROJECT="sdk/dotnet/src/Microsandbox/Microsandbox.csproj"
+if [ -f "$DOTNET_PROJECT" ]; then
+  inplace "s#<Version>[^<]*</Version>#<Version>${NEW}</Version>#" "$DOTNET_PROJECT"
+  echo "  updated ${DOTNET_PROJECT}"
+fi
+
+DOTNET_README="sdk/dotnet/README.md"
+if [ -f "$DOTNET_README" ] && grep -q "${OLD}" "$DOTNET_README"; then
+  inplace "s/${OLD//./\\.}/${NEW}/g" "$DOTNET_README"
+  echo "  updated ${DOTNET_README}"
 fi
 
 echo

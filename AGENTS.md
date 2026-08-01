@@ -18,7 +18,7 @@ Do not apply them to other repositories or to general agent behavior outside thi
 - `crates/filesystem`, `crates/image`, `crates/network`, `crates/db`, `crates/migration`, `crates/metrics`, `crates/metrics-collector`, `crates/protocol`, and `crates/utils` are shared internal crates.
 - `packages/agent-client` and `packages/microsandbox-types` are the shared agent-protocol client and wire-contract type packages, each with Rust and TypeScript implementations.
 - `crates/agentd` is the in-guest agent. It is a workspace member; the musl guest binary that ships in releases is built separately.
-- `sdk/python`, `sdk/node-ts`, and `sdk/go` contain the language SDKs and native bindings.
+- `sdk/python`, `sdk/node-ts`, `sdk/go`, and `sdk/dotnet` contain the language SDKs and native bindings.
 - `docs/` contains the documentation site. Keep docs in sync with user-facing behavior.
 - `examples/` contains runnable examples. Add new example projects only when requested or clearly required by the contribution.
 - `mcp/` and `skills/` are submodules related to agent integrations.
@@ -80,6 +80,7 @@ Repository layout:
 |   `-- smoke/
 |-- sdk/
 |   |-- go/
+|   |-- dotnet/
 |   |-- node-ts/
 |   |-- rust/
 |   `-- python/
@@ -229,6 +230,14 @@ Go SDK checks:
 cd sdk/go
 go test -count=1 .
 go test -tags "smoke microsandbox_ffi_path" -count=1 -timeout 2m .
+```
+
+.NET SDK checks:
+
+```bash
+cd sdk/dotnet
+mise run check
+mise run pack-local
 ```
 
 Integration tests may require Linux with KVM or macOS Apple Silicon support. If a needed check cannot run in the current environment, say exactly which command was skipped and why.

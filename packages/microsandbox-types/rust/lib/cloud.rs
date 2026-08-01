@@ -32,8 +32,7 @@ use crate::{TypesError, TypesResult};
 ///
 /// Flattens [`CloudSandboxSpec`] onto the request body, so on the wire this is
 /// byte-identical to `CloudSandboxSpec`. The generated bindings surface the
-/// flattened shape as `CloudSandboxSpec` directly (see
-/// [`CloudCreateSandboxResponse::spec`], typed `CloudSandboxSpec`).
+/// flattened shape as `CloudSandboxSpec` directly.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
 pub struct CloudCreateSandboxRequest {
@@ -814,8 +813,16 @@ pub struct CloudCreateSandboxResponse {
     pub slug: String,
     /// Current lifecycle status.
     pub status: CloudSandboxStatus,
-    /// The sandbox spec the cloud control plane stored for this sandbox.
-    pub spec: CloudSandboxSpec,
+    /// Why the sandbox is not running yet, when known. Only present while
+    /// `status` is `starting`.
+    #[serde(default)]
+    pub status_reason: Option<CloudSandboxStatusReason>,
+    /// Curated resolved-spec projection returned by the control plane, when
+    /// available. Lifecycle and agent operations intentionally do not depend
+    /// on reconstructing the create request from this server-owned view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(type = "unknown | null | undefined"))]
+    pub spec: Option<serde_json::Value>,
     /// Whether the sandbox should be removed when its allocation terminates.
     pub ephemeral: bool,
     /// Creation timestamp.
@@ -829,9 +836,9 @@ pub struct CloudCreateSandboxResponse {
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(type = "string | null"))]
     pub stopped_at: Option<DateTime<Utc>>,
-    /// Last failure reason, when any.
+    /// Human-readable message for the most recent failure, when any.
     #[serde(default)]
-    pub last_error: Option<String>,
+    pub last_failure_message: Option<String>,
 }
 
 /// Sandbox lifecycle status returned by the cloud control plane.
@@ -852,6 +859,20 @@ pub enum CloudSandboxStatus {
     Stopped,
     /// Sandbox failed.
     Failed,
+}
+
+/// Reason a sandbox start is still in progress. Only meaningful while
+/// `status` is `starting`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "snake_case")]
+pub enum CloudSandboxStatusReason {
+    /// The start has been accepted and is being scheduled.
+    Scheduling,
+    /// No capacity is currently available; the start proceeds when
+    /// capacity frees up.
+    InsufficientCapacity,
 }
 
 /// Wire shape of paginated list responses.
@@ -1518,19 +1539,23 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_response_round_trips() {
+    fn sandbox_response_accepts_curated_optional_spec() {
         let sb = CloudCreateSandboxResponse {
             id: "00000000-0000-0000-0000-000000000002".into(),
             org_id: "00000000-0000-0000-0000-000000000001".into(),
             name: "agent-1".into(),
             slug: "brave-otter".into(),
             status: CloudSandboxStatus::Created,
-            spec: spec("agent-1"),
+            status_reason: None,
+            spec: Some(serde_json::json!({
+                "image": "python:3.12",
+                "resources": { "vcpus": 2, "memory_mib": 1024 },
+            })),
             ephemeral: true,
             created_at: "2026-05-17T12:00:00Z".parse().unwrap(),
             started_at: None,
             stopped_at: None,
-            last_error: None,
+            last_failure_message: None,
         };
         let json = serde_json::to_value(&sb).unwrap();
         assert_eq!(json["slug"], "brave-otter");
@@ -1539,7 +1564,28 @@ mod tests {
         let back: CloudCreateSandboxResponse = serde_json::from_value(json).unwrap();
         assert_eq!(back.slug, "brave-otter");
         assert_eq!(back.status, CloudSandboxStatus::Created);
-        assert_eq!(back.spec.name, "agent-1");
+        assert_eq!(back.spec.as_ref().unwrap()["image"], "python:3.12");
         assert!(back.started_at.is_none());
+    }
+
+    #[test]
+    fn sandbox_response_accepts_omitted_spec() {
+        let json = serde_json::json!({
+            "id": "00000000-0000-0000-0000-000000000002",
+            "org_id": "00000000-0000-0000-0000-000000000001",
+            "name": "agent-1",
+            "slug": "brave-otter",
+            "status": "running",
+            "ephemeral": false,
+            "created_at": "2026-05-17T12:00:00Z",
+            "started_at": "2026-05-17T12:00:01Z",
+            "stopped_at": null,
+            "last_failure_message": null
+        });
+
+        let response: CloudCreateSandboxResponse = serde_json::from_value(json).unwrap();
+
+        assert!(response.spec.is_none());
+        assert_eq!(response.status, CloudSandboxStatus::Running);
     }
 }

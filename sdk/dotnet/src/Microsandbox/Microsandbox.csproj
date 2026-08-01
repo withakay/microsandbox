@@ -1,0 +1,58 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <PackageId>Withakay.Microsandbox</PackageId>
+    <AssemblyName>Withakay.Microsandbox</AssemblyName>
+    <Version>0.6.8</Version>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">$(Version)</PackageVersion>
+    <Title>Unofficial microsandbox SDK for .NET</Title>
+    <Authors>Withakay</Authors>
+    <Description>Unofficial .NET SDK for microsandbox with RID-specific native runtime assets. This package is not an official microsandbox distribution.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageTags>microsandbox;sandbox;virtual-machine;vm</PackageTags>
+    <RepositoryUrl>https://github.com/withakay/microsandbox</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeNativeAssets Condition="'$(IncludeNativeAssets)' == ''">true</IncludeNativeAssets>
+    <RequireNativeAssets Condition="'$(RequireNativeAssets)' == ''">true</RequireNativeAssets>
+    <NativeAssetsRoot>$(MSBuildProjectDirectory)/runtimes</NativeAssetsRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Microsandbox.Tests" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IncludeNativeAssets)' == 'true'">
+    <None Include="$(NativeAssetsRoot)/**/native/*"
+          Pack="true"
+          PackagePath="runtimes/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="ValidateNativeAssets" BeforeTargets="GenerateNuspec" Condition="'$(RequireNativeAssets)' == 'true'">
+    <ItemGroup>
+      <RequiredNativeAsset Include="$(NativeAssetsRoot)/linux-x64/native/libmicrosandbox_go_ffi.so" />
+      <RequiredNativeAsset Include="$(NativeAssetsRoot)/linux-arm64/native/libmicrosandbox_go_ffi.so" />
+      <RequiredNativeAsset Include="$(NativeAssetsRoot)/osx-arm64/native/libmicrosandbox_go_ffi.dylib" />
+      <RequiredNativeAsset Include="$(NativeAssetsRoot)/win-x64/native/microsandbox_go_ffi.dll" />
+      <RequiredNativeAsset Include="$(NativeAssetsRoot)/win-arm64/native/microsandbox_go_ffi.dll" />
+      <MissingNativeAsset Include="@(RequiredNativeAsset)" Condition="!Exists('%(Identity)')" />
+    </ItemGroup>
+    <Error Condition="'@(MissingNativeAsset)' != ''"
+           Text="Missing required native runtime assets: @(MissingNativeAsset, ', '). Run 'mise run stage-native -- RELEASE_ASSET_DIR RELEASE_VERSION'." />
+    <Error Condition="!Exists('$(NativeAssetsRoot)/release-version.txt')"
+           Text="Missing native asset release manifest. Run 'mise run stage-native -- RELEASE_ASSET_DIR RELEASE_VERSION'." />
+    <ReadLinesFromFile File="$(NativeAssetsRoot)/release-version.txt"
+                       Condition="Exists('$(NativeAssetsRoot)/release-version.txt')">
+      <Output TaskParameter="Lines" ItemName="StagedNativeReleaseVersion" />
+    </ReadLinesFromFile>
+    <Error Condition="'@(StagedNativeReleaseVersion)' != '$(PackageVersion)'"
+           Text="Staged native assets are release @(StagedNativeReleaseVersion), but the package version is $(PackageVersion). Restage assets from the matching release." />
+  </Target>
+
+</Project>

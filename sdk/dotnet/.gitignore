@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+TestResults/
+artifacts/
+artifacts*/
+.runtime*/
+src/Microsandbox/runtimes/

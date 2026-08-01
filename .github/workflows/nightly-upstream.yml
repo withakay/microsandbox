@@ -1,0 +1,156 @@
+name: Sync upstream and publish .NET SDK
+
+on:
+  schedule:
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-upstream
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: superradcompany/microsandbox
+  PACKAGE_ID: Withakay.Microsandbox
+
+jobs:
+  sync:
+    name: Sync latest stable upstream release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      package-exists: ${{ steps.nuget.outputs.exists }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Find latest stable upstream release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh api "repos/${UPSTREAM_REPOSITORY}/releases/latest" --jq .tag_name)
+          if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::latest stable upstream tag is not vX.Y.Z: $TAG"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream release into main
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --force upstream "refs/tags/$TAG:refs/tags/upstream-$TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge --no-commit --no-ff "refs/tags/upstream-$TAG"
+          sed -i "s#<Version>[^<]*</Version>#<Version>$VERSION</Version>#" \
+            sdk/dotnet/src/Microsandbox/Microsandbox.csproj
+          git add sdk/dotnet/src/Microsandbox/Microsandbox.csproj
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: sync upstream $TAG"
+          fi
+
+      - name: Check NuGet version
+        id: nuget
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          PACKAGE_ID_LOWER=$(printf '%s' "$PACKAGE_ID" | tr '[:upper:]' '[:lower:]')
+          URL="https://api.nuget.org/v3-flatcontainer/$PACKAGE_ID_LOWER/$VERSION/$PACKAGE_ID_LOWER.$VERSION.nupkg"
+          if curl --fail --silent --head "$URL" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download upstream native assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          mkdir release-assets
+          gh release download "$TAG" \
+            --repo "$UPSTREAM_REPOSITORY" \
+            --dir release-assets \
+            --pattern checksums.sha256 \
+            --pattern 'libmicrosandbox_go_ffi-*'
+
+      - name: Stage and test native assets
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          sdk/dotnet/scripts/stage-native.sh release-assets "$VERSION"
+          dotnet restore sdk/dotnet/Microsandbox.slnx
+          dotnet build sdk/dotnet/Microsandbox.slnx --no-restore -p:Version="$VERSION"
+          MICROSANDBOX_FFI_LIBRARY="$PWD/release-assets/libmicrosandbox_go_ffi-linux-amd64.so" \
+            dotnet test sdk/dotnet/Microsandbox.slnx --no-build --no-restore -p:Version="$VERSION"
+
+      - name: Pack .NET SDK
+        if: steps.nuget.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          dotnet pack sdk/dotnet/src/Microsandbox/Microsandbox.csproj \
+            --no-restore \
+            --configuration Release \
+            --output sdk/dotnet/artifacts \
+            -p:Version="$VERSION" \
+            -p:PackageVersion="$VERSION"
+
+      - name: Upload NuGet package artifact
+        if: steps.nuget.outputs.exists != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dotnet-sdk-nuget-${{ github.run_attempt }}
+          path: sdk/dotnet/artifacts/*.nupkg
+
+      - name: Push validated upstream merge
+        run: git push origin HEAD:main
+
+  publish:
+    name: Publish .NET SDK
+    needs: sync
+    if: needs.sync.outputs.package-exists != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: nuget
+      url: https://www.nuget.org/packages/Withakay.Microsandbox
+    steps:
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download validated NuGet package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dotnet-sdk-nuget-${{ github.run_attempt }}
+          path: artifacts
+
+      - name: Log in to NuGet.org with OIDC
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish .NET SDK
+        run: >-
+          dotnet nuget push artifacts/*.nupkg
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate

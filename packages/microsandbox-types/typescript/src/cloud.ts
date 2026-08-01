@@ -507,9 +507,16 @@ export type CloudCreateSandboxResponse = {
    */
   status: CloudSandboxStatus;
   /**
-   * The sandbox spec the cloud control plane stored for this sandbox.
+   * Why the sandbox is not running yet, when known. Only present while
+   * `status` is `starting`.
    */
-  spec: CloudSandboxSpec;
+  status_reason: CloudSandboxStatusReason | null;
+  /**
+   * Curated resolved-spec projection returned by the control plane, when
+   * available. Lifecycle and agent operations intentionally do not depend
+   * on reconstructing the create request from this server-owned view.
+   */
+  spec?: unknown | null | undefined;
   /**
    * Whether the sandbox should be removed when its allocation terminates.
    */
@@ -527,9 +534,9 @@ export type CloudCreateSandboxResponse = {
    */
   stopped_at: string | null;
   /**
-   * Last failure reason, when any.
+   * Human-readable message for the most recent failure, when any.
    */
-  last_error: string | null;
+  last_failure_message: string | null;
 };
 
 export type CloudSandboxStatus =
@@ -539,6 +546,8 @@ export type CloudSandboxStatus =
   | "stopping"
   | "stopped"
   | "failed";
+
+export type CloudSandboxStatusReason = "scheduling" | "insufficient_capacity";
 
 export type CloudPaginated<T> = {
   /**

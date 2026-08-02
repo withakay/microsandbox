@@ -682,10 +682,12 @@ jobs:
             echo "::error::tag version $VERSION does not match .NET project version $PROJECT_VERSION"
             exit 1
           fi
-          dotnet restore sdk/dotnet/Microsandbox.slnx
-          dotnet build sdk/dotnet/Microsandbox.slnx --no-restore -p:Version="$VERSION"
-          MICROSANDBOX_FFI_LIBRARY="$PWD/release-artifacts/libmicrosandbox_go_ffi-linux-amd64.so" \
-            dotnet test sdk/dotnet/Microsandbox.slnx --no-build --no-restore -p:Version="$VERSION"
+          pushd sdk/dotnet
+          dotnet restore Microsandbox.slnx
+          dotnet build Microsandbox.slnx --no-restore -p:Version="$VERSION"
+          MICROSANDBOX_FFI_LIBRARY="$GITHUB_WORKSPACE/release-artifacts/libmicrosandbox_go_ffi-linux-amd64.so" \
+            dotnet test Microsandbox.slnx --no-build --no-restore -p:Version="$VERSION"
+          popd
           dotnet pack sdk/dotnet/src/Microsandbox/Microsandbox.csproj \
             --no-restore \
             --configuration Release \

@@ -93,10 +93,12 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           sdk/dotnet/scripts/stage-native.sh release-assets "$VERSION"
-          dotnet restore sdk/dotnet/Microsandbox.slnx
-          dotnet build sdk/dotnet/Microsandbox.slnx --no-restore -p:Version="$VERSION"
-          MICROSANDBOX_FFI_LIBRARY="$PWD/release-assets/libmicrosandbox_go_ffi-linux-amd64.so" \
-            dotnet test sdk/dotnet/Microsandbox.slnx --no-build --no-restore -p:Version="$VERSION"
+          pushd sdk/dotnet
+          dotnet restore Microsandbox.slnx
+          dotnet build Microsandbox.slnx --no-restore -p:Version="$VERSION"
+          MICROSANDBOX_FFI_LIBRARY="$GITHUB_WORKSPACE/release-assets/libmicrosandbox_go_ffi-linux-amd64.so" \
+            dotnet test Microsandbox.slnx --no-build --no-restore -p:Version="$VERSION"
+          popd
 
       - name: Pack .NET SDK
         if: steps.nuget.outputs.exists != 'true'

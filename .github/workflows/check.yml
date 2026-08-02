@@ -611,7 +611,7 @@ jobs:
   cli-smoke-test:
     name: CLI Smoke Tests
     needs: [check, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: github.repository == 'superradcompany/microsandbox' && needs.changes.outputs.code == 'true'
     runs-on: self-hosted-ubuntu-2404-x64
     # Bound a wedged run so it can't squat a shared runner for the 6h default.
     timeout-minutes: 45
@@ -655,7 +655,7 @@ jobs:
   integration-test:
     name: Integration Tests
     needs: [check, changes, cli-smoke-test]
-    if: needs.changes.outputs.code == 'true'
+    if: github.repository == 'superradcompany/microsandbox' && needs.changes.outputs.code == 'true'
     runs-on: self-hosted-ubuntu-2404-x64
     # Bound a wedged run so it can't squat a shared runner for the 6h default.
     timeout-minutes: 45
@@ -756,7 +756,7 @@ jobs:
   node-sdk-test:
     name: Node.js SDK Tests
     needs: [check, changes, integration-test]
-    if: needs.changes.outputs.code == 'true'
+    if: github.repository == 'superradcompany/microsandbox' && needs.changes.outputs.code == 'true'
     runs-on: self-hosted-ubuntu-2404-x64
     # Bound a wedged run so it can't squat a shared runner for the 6h default.
     timeout-minutes: 45
@@ -903,7 +903,7 @@ jobs:
   python-sdk-test:
     name: Python SDK Tests
     needs: [check, changes, node-sdk-test]
-    if: needs.changes.outputs.code == 'true'
+    if: github.repository == 'superradcompany/microsandbox' && needs.changes.outputs.code == 'true'
     runs-on: self-hosted-ubuntu-2404-x64
     # Bound a wedged run so it can't squat a shared runner for the 6h default.
     timeout-minutes: 45
@@ -1054,7 +1054,7 @@ jobs:
   go-sdk-test:
     name: Go SDK Tests
     needs: [check, changes, python-sdk-test]
-    if: needs.changes.outputs.code == 'true'
+    if: github.repository == 'superradcompany/microsandbox' && needs.changes.outputs.code == 'true'
     runs-on: self-hosted-ubuntu-2404-x64
     # Bound a wedged run so it can't squat a shared runner for the 6h default.
     timeout-minutes: 45
